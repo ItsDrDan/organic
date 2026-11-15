@@ -416,11 +416,13 @@ const MODES = [
 function renderModes() {
   $('modeGrid').innerHTML = MODES.map(m => `<button type="button" class="mode-btn" data-mode="${m.id}"><span class="mode-icon">${ico(m.ic)}</span><span class="mode-name">${m.name}</span><small>${m.sub}</small></button>`).join('');
 }
+/* ?groups=alcohol,phenol,… limits Spot It to the families a textbook section has taught so far (2026-11-14) */
+function spotPool() { let only = []; try { only = (new URLSearchParams(location.search).get('groups') || '').split(',').filter(g => byId[g]); } catch {} const pool = only.length ? SPOT_TASKS.filter(t => only.includes(t.g)) : SPOT_TASKS; return pool.length ? pool : SPOT_TASKS; }
 /* deck (optional): a list of group ids to quiz, e.g. the groups missed on a Skill Check Prep */
 function setMode(id, deck, scroll = true) {
   S.mode = id; document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === id));
   $('modeTitle').textContent = deck ? 'Practice my missed groups' : MODES.find(m => m.id === id).name;
-  S.deck = id === 'spot' ? shuffle(SPOT_TASKS).slice(0, 10) : deck ? shuffle(deck) : id === 'skill' ? shuffle(GROUPS.map(g => g.id)).slice(0, 10) : shuffle(GROUPS.map(g => g.id));
+  S.deck = id === 'spot' ? shuffle(spotPool()).slice(0, 10) : deck ? shuffle(deck) : id === 'skill' ? shuffle(GROUPS.map(g => g.id)).slice(0, 10) : shuffle(GROUPS.map(g => g.id));
   S.i = 0; S.correct = 0; S.streak = 0; S.results = []; updateStats();
   if (id === 'study') renderStudy(); else if (id === 'spot') nextSpot(); else nextQuestion();
   if (scroll) $('practice').scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -689,13 +691,21 @@ function renderPlan() {
 $('journeyReset').onclick = () => { if (!confirm('Reset XP, badges and mastery for this game?')) return; P.xp = 0; P.bestSkill = 0; P.badges = {}; P.mastery = {}; P.answered = 0; P.studied = {}; P.best = 0; save(); renderJourney(); renderMastery(); updateStats(); toast('Progress reset'); };
 
 P.bestSkill = P.bestSkill || 0;
+/* scroll this page (never the host page) to an element, once layout settles; stops if the student scrolls first */
+/* ?view=lab: compact view for a textbook box. Shows only the demo (and whatever it needs) plus a link to the full game,
+   so the box can stay short on a phone and the student can still scroll the textbook page around it (2026-11-14). */
+function ddLabView(keep){try{if(new URLSearchParams(location.search).get('view')!=='lab')return false;const ks=keep.map(k=>typeof k==='string'?document.getElementById(k):k).filter(Boolean);if(!ks.length)return false;const need=new Set();ks.forEach(k=>{for(let e=k;e&&e!==document.body;e=e.parentElement)need.add(e)});need.forEach(e=>{const p=e.parentElement;if(!p)return;[...p.children].forEach(c=>{if(need.has(c)||/^(SCRIPT|STYLE|DIALOG|CANVAS|TEMPLATE|LINK|NOSCRIPT)$/.test(c.tagName)||getComputedStyle(c).position==='fixed')return;c.setAttribute('data-dd-labhide','')})});const st=document.createElement('style');st.textContent='[data-dd-labhide]{display:none!important}.dd-labbar{display:flex;justify-content:flex-end;padding:4px 10px 0;font:600 14px/1.4 system-ui,-apple-system,sans-serif}.dd-labbar a{color:inherit;text-decoration:underline}';document.head.appendChild(st);document.documentElement.classList.add('dd-labview');const u=new URL(location.href);u.searchParams.delete('view');const bar=document.createElement('div');bar.className='dd-labbar';const a=document.createElement('a');a.href=u.href;a.target='_blank';a.rel='noopener';a.textContent='Open the full game ↗';bar.appendChild(a);document.body.insertBefore(bar,document.body.firstChild);window.scrollTo(0,0);return true}catch(e){return false}}
+function ddJumpTo(get){let moved=false;const stop=()=>{moved=true};['wheel','touchstart','keydown','pointerdown'].forEach(t=>addEventListener(t,stop,{once:true,passive:true}));const go=()=>{if(moved||document.documentElement.classList.contains('dd-labview'))return;const el=get();if(el)window.scrollTo({top:Math.max(0,el.getBoundingClientRect().top+window.scrollY-8),behavior:'instant'})};requestAnimationFrame(()=>requestAnimationFrame(go));if(document.readyState!=='complete')addEventListener('load',()=>setTimeout(go,50),{once:true});setTimeout(go,700)}
 function init() {
   renderModes();
   $('modeGrid').addEventListener('click', e => { const b = e.target.closest('.mode-btn'); if (b) setMode(b.dataset.mode); });
   $('rgrid').innerHTML = ''; GROUPS.forEach(g => { const c = document.createElement('div'); c.className = 'rcard'; c.append(drawGroup(g, {noNote: true, noPairs: true})); const t = document.createElement('div'); t.innerHTML = `<b>${esc(g.name)}</b><span>${esc(g.key)}</span>`; c.append(t); $('rgrid').append(c); });
   paintIcons(); renderJourney(); renderMastery();
-  setMode('study', null, false);
-  window.scrollTo(0, 0);
+  /* ?mode=spot (any mode id) opens that mode; scroll this page only, never the host page (2026-11-14) */
+  let m0 = 'study'; try { const m = new URLSearchParams(location.search).get('mode'); if (MODES.some(x => x.id === m)) m0 = m; } catch {}
+  setMode(m0, null, false);
+  if (m0 === 'study') window.scrollTo(0, 0); else ddJumpTo(() => $('practice'));
+  ddLabView(['practice']);
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 </script>
